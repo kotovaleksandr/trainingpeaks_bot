@@ -1,0 +1,32 @@
+name: Docker Image CI
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+env:
+  IMAGE_NAME: trainingpeaks_bot
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+   
+    steps:
+    - name: Generate build number
+      uses: einaregilsson/build-number@v3
+      with:
+         token: ${{secrets.github_token}}    
+    - name: Print new build number
+      run: echo "Build number is $BUILD_NUMBER"
+    - name: Log into GitHub Container Registry
+      run: echo ${{ secrets.GITHUB_TOKEN }} | docker login -u kotovaleksandr --password-stdin ghcr.io
+    - uses: actions/checkout@v2
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER
+    - name: Build the Docker image ARM
+      run: docker build . --file Dockerfile.arm --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER
+    - name: Push image to GitHub Container Registry
+      run: docker push ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER
+    - name: Push ARM image to GitHub Container Registry
+      run: docker push ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER
+      
