@@ -22,9 +22,9 @@ jobs:
       run: echo ${{ secrets.GITHUB_TOKEN }} | docker login -u kotovaleksandr --password-stdin ghcr.io
     - uses: actions/checkout@v2
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER
+      run: docker build . --file Dockerfile --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:latest
     - name: Build the Docker image ARM
-      run: docker build . --file Dockerfile.arm --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER
+      run: docker build . --file Dockerfile.arm --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:latest
     - name: Push image to GitHub Container Registry
       run: docker push ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER
     - name: Push ARM image to GitHub Container Registry
