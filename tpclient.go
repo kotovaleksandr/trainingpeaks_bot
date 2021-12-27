@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/jinzhu/now"
 )
 
 type Workout struct {
@@ -24,13 +25,12 @@ type CustomDate struct {
 }
 
 type client struct {
-	UserId string
 }
 
 func (c *CustomDate) UnmarshalJSON(b []byte) (err error) {
 	s := strings.Trim(string(b), "\"") + ".000Z"
-	c.Time, err = time.Parse(time.RFC3339, s)
-	return
+	c.Time, _ = time.Parse(time.RFC3339, s)
+	return nil
 }
 
 func GetWorkoutsFromData(data string) ([]Workout, error) {
@@ -43,11 +43,11 @@ func GetWorkoutsFromData(data string) ([]Workout, error) {
 	return f, err
 }
 
-func (c client) GetDataFromServer(token string) ([]Workout, error) {
+func (c client) GetDataFromServer(token string, userId int) ([]Workout, error) {
 	client := resty.New()
 
 	req := client.R()
-	url := fmt.Sprintf("https://tpapi.trainingpeaks.com/fitness/v1/athletes/%s/workouts/%s/%s", c.UserId, time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 7).Format("2006-01-02"))
+	url := fmt.Sprintf("https://tpapi.trainingpeaks.com/fitness/v1/athletes/%d/workouts/%s/%s", userId, time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 7).Format("2006-01-02"))
 
 	log.Printf("Get workouts from url: %s", url)
 
@@ -68,6 +68,35 @@ func (c client) GetDataFromServer(token string) ([]Workout, error) {
 	}
 
 	return GetWorkoutsFromData(resp.String())
+}
+
+func (c client) GetTodayWorkouts(token string, userId int) ([]Workout, error) {
+	data, err := c.GetDataFromServer(token, userId)
+	if err != nil {
+		return nil, err
+	}
+	workouts := make([]Workout, 0)
+	for _, w := range data {
+		if w.WorkoutDay.Year() == time.Now().Year() && w.WorkoutDay.Month() == time.Now().Month() && w.WorkoutDay.Day() == time.Now().Day() {
+			workouts = append(workouts, w)
+		}
+	}
+	return workouts, nil
+}
+func (c client) GetRemainOnWeekWorkouts(token string, userId int) ([]Workout, error) {
+	from := time.Now()
+	to := now.EndOfWeek()
+	data, err := c.GetDataFromServer(token, userId)
+	if err != nil {
+		return nil, err
+	}
+	workouts := make([]Workout, 0)
+	for _, w := range data {
+		if w.WorkoutDay.After(from) && w.WorkoutDay.Before(to) {
+			workouts = append(workouts, w)
+		}
+	}
+	return workouts, nil
 }
 
 func CompareTwoSets(one []Workout, two []Workout) []Workout {

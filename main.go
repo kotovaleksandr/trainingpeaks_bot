@@ -3,21 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-)
-
-var Workouts []Workout
-var dataFileName = "users.dat"
-
-const (
-	tp_token string = "tp_token"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type sender interface {
@@ -25,7 +16,9 @@ type sender interface {
 }
 
 type tpclient interface {
-	GetDataFromServer(token string) ([]Workout, error)
+	GetDataFromServer(token string, userId int) ([]Workout, error)
+	GetTodayWorkouts(token string, userId int) ([]Workout, error)
+	GetRemainOnWeekWorkouts(token string, userId int) ([]Workout, error)
 }
 
 func main() {
@@ -39,71 +32,74 @@ func main() {
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	userId, err := getUserIdAndRefreshToken()
-	if err != nil {
-		log.Fatalf("User id not found")
-	} else {
-		log.Printf("User id %s", userId)
-	}
-	client := client{
-		UserId: os.Getenv("USER_ID"),
-	}
-
-	work(bot, client)
+	client := client{}
+	store := UserStore{}
+	work(bot, client, store)
 
 	go func() {
 		for range time.Tick(time.Minute * 10) {
-			work(bot, client)
+			work(bot, client, store)
 		}
 	}()
 
 	go func() {
 		for range time.Tick(time.Minute * 9) {
-			_, err := getUserIdAndRefreshToken()
+			err := getUserIdAndRefreshToken(store)
 			if err != nil {
 				log.Fatalf("User id not found")
 			}
 		}
 	}()
-	go waitNewUsers(bot)
+	go waitNewUsers(bot, store, client)
 
 	select {}
 }
 
-func work(bot sender, client tpclient) {
-	tpToken := getTokenFromFile(tp_token, "Training peaks token (tp_token)")
-	log.Printf("Try get data from server")
-	actualWorkouts, err := client.GetDataFromServer(tpToken)
+func work(bot sender, client tpclient, store usersstore) {
+
+	users, err := store.GetAllUsers()
 	if err != nil {
-		log.Printf("Error on recieving data from server: %s", err)
-		return
+		log.Printf("Error on read users from store %s", err)
 	}
+	for _, u := range users {
+		if u.TraininkPeaksId == 0 {
+			log.Printf("Skip user %d with TP id = 0", u.ChatId)
+			continue
+		}
+		log.Printf("Try get data from server. UserID: %d", u.TraininkPeaksId)
+		actualWorkouts, err := client.GetDataFromServer(u.Token, u.TraininkPeaksId)
+		if err != nil {
+			log.Printf("Error on recieving data from server: %s", err)
+			continue
+		}
 
-	log.Printf("Found %d workouts", len(actualWorkouts))
-	if Workouts == nil {
-		log.Print("Init workouts")
-		Workouts = actualWorkouts
-		for _, user := range getUsers() {
-			msg := tgbotapi.NewMessage(user, "Ok, initial workouts loaded")
-			log.Printf("Send message to user %v", user)
+		log.Printf("Found %d workouts", len(actualWorkouts))
+		if u.Workouts == nil {
+			log.Print("Init workouts")
+			u.Workouts = actualWorkouts
+			store.UpdateUser(u)
+
+			msg := tgbotapi.NewMessage(int64(u.ChatId), "Ok, initial workouts loaded")
+			log.Printf("Send message to user %v", u.ChatId)
 			bot.Send(msg)
-		}
-	} else {
-		diff := CompareTwoSets(Workouts, actualWorkouts)
 
-		if len(diff) > 0 {
-			for _, currentWorkout := range diff {
-				for _, user := range getUsers() {
-					msg := tgbotapi.NewMessage(user, fmt.Sprintf("Updated workout: %v at %v, description: %v\n", currentWorkout.Title, currentWorkout.WorkoutDay.Format("2006-01-02"), currentWorkout.Description))
-					log.Printf("Send message to user %v", user)
-					bot.Send(msg)
-					Workouts = actualWorkouts
-				}
-			}
 		} else {
-			log.Print("No new data")
+			diff := CompareTwoSets(u.Workouts, actualWorkouts)
+
+			if len(diff) > 0 {
+				for _, currentWorkout := range diff {
+					msg := tgbotapi.NewMessage(int64(u.ChatId), fmt.Sprintf("Updated workout: %v at %v, description: %v\n", currentWorkout.Title, currentWorkout.WorkoutDay.Format("2006-01-02"), currentWorkout.Description))
+					log.Printf("Send message to user %v", u.ChatId)
+					bot.Send(msg)
+					u.Workouts = actualWorkouts
+					store.UpdateUser(u)
+				}
+			} else {
+				log.Print("No new data")
+			}
 		}
 	}
+
 }
 
 func getTokenFromFile(fileName string, tokenKind string) string {
@@ -123,111 +119,111 @@ func getTokenFromFile(fileName string, tokenKind string) string {
 	return token
 }
 
-func getUsers() []int64 {
-	log.Printf("Try read data from file %v", dataFileName)
-	file, err := os.Open(dataFileName)
-
-	result := make([]int64, 0)
-	if err != nil && !os.IsExist(err) {
-		log.Printf("Dat file not found, create them")
-		os.Create(dataFileName)
-		return result
-	}
-
-	reader := bufio.NewReader(file)
-	for {
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			log.Printf("Error read users files: %v\n", err)
-			break
-		}
-
-		in, err := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
-		log.Printf("Get line from file: %d. Source line:%v\n", in, line)
-		if err != nil {
-			log.Printf("Data file corrupted: %v\n", err)
-		} else {
-			result = append(result, in)
-		}
-	}
-
-	return result
-}
-
-func waitNewUsers(bot *tgbotapi.BotAPI) {
+func waitNewUsers(bot *tgbotapi.BotAPI, store usersstore, c client) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates, err := bot.GetUpdatesChan(u)
-
-	if err != nil {
-		log.Printf("Wait messages error: %s", err)
-		return
-	}
+	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
 		if update.Message == nil { // ignore any non-Message Updates
 			continue
 		}
-
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-		msg.ReplyToMessageID = update.Message.MessageID
+		user, err := store.FindUserByChat(update.Message.Chat.ID)
+		if err != nil || user.ChatId == 0 {
+			log.Printf("Error on get user: %d, %s", update.Message.Chat.ID, err)
+			log.Printf("User not found, try create them")
+			user = User{
+				ChatId: update.Message.Chat.ID,
+			}
+			store.CreateUser(user)
+		} else {
+			log.Printf("Found user %d", user.ChatId)
+		}
 
-		addUser(update.Message.Chat.ID)
-		bot.Send(msg)
-	}
-}
+		var messageText string
+		if update.Message.IsCommand() {
+			log.Printf("Recived command %s", update.Message.Text)
+			if update.Message.Text == "/token" {
+				user.Status = "token"
+				messageText = "Enter TP token value"
+			} else if update.Message.Text == "/id" {
+				user.Status = "id"
+				messageText = "Enter TP id"
+			} else if update.Message.Text == "/today" {
+				w, err := c.GetTodayWorkouts(user.Token, user.TraininkPeaksId)
+				if err != nil {
+					log.Printf("Failed to get today workouts: %s", err)
+					continue
+				} else {
+					for _, currentWorkout := range w {
+						msg := tgbotapi.NewMessage(int64(user.ChatId), fmt.Sprintf("Workout: %v at %v, description: %v\n", currentWorkout.Title, currentWorkout.WorkoutDay.Format("2006-01-02"), currentWorkout.Description))
+						log.Printf("Send message to user %v", user.ChatId)
+						bot.Send(msg)
+					}
+					continue
+				}
+			} else if update.Message.Text == "/week" {
+				w, err := c.GetRemainOnWeekWorkouts(user.Token, user.TraininkPeaksId)
+				if err != nil {
+					log.Printf("Failed to get week workouts: %s", err)
+					continue
+				} else {
+					for _, currentWorkout := range w {
+						msg := tgbotapi.NewMessage(int64(user.ChatId), fmt.Sprintf("Workout: %v at %v, description: %v\n", currentWorkout.Title, currentWorkout.WorkoutDay.Format("2006-01-02"), currentWorkout.Description))
+						log.Printf("Send message to user %v", user.ChatId)
+						bot.Send(msg)
+					}
+					continue
+				}
+			}
+		} else {
+			if user.Status == "token" {
+				user.Token = update.Message.Text
+				messageText = "Token saved!"
+				user.Status = ""
+			} else if user.Status == "id" {
+				user.TraininkPeaksId, err = strconv.Atoi(update.Message.Text)
+				if err != nil {
+					messageText = "Id has incorrect format, please enter again"
+				} else {
+					messageText = "Id saved!"
+					user.Status = ""
+				}
+			}
+		}
 
-func addUser(user int64) {
-	log.Printf("Add user %d to file %v", user, dataFileName)
-	file, err := os.Open(dataFileName)
-	if !os.IsExist(err) {
-		log.Printf("Data file not found, create them")
-		file, err = os.Create(dataFileName)
+		err = store.UpdateUser(user)
 		if err != nil {
-			panic(err)
+			log.Printf("Error on user status save %s", err)
+		}
+		message := tgbotapi.NewMessage(user.ChatId, messageText)
+		_, err = bot.Send(message)
+		if err != nil {
+			log.Printf("Error on message send: %s", err)
 		}
 	}
-	_, err = file.WriteString(fmt.Sprintf("%v\n", user))
-	if err != nil {
-		panic(err)
-	}
-	file.Close()
 }
 
-func getUserIdAndRefreshToken() (string, error) {
-	tpToken := getTokenFromFile("tp_token", "Training peaks token (tp_token)")
-	token, userId, err := RefreshToken(tpToken)
+func getUserIdAndRefreshToken(store usersstore) error {
+	users, err := store.GetAllUsers()
 	if err != nil {
-		log.Panicf("Error on token refresh %s", err)
-		return userId, err
+		log.Printf("Error on read users, try lateer")
+		return err
 	}
-	if token != "" {
-		writeTokenToFile(token, tp_token)
-	}
-	return userId, nil
-}
-
-func writeTokenToFile(token string, filename string) {
-	log.Printf("Write token to file %s", filename)
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0777)
-	if err != nil && !os.IsExist(err) {
-		log.Printf("Data file not found, create them")
-		file, err = os.Create(filename)
+	for _, u := range users {
+		token, _, err := RefreshToken(u.Token)
 		if err != nil {
-			panic(err)
+			log.Printf("Error on token refresh %s", err)
+			return err
+		}
+		if token != "" {
+			u.Token = token
+			store.UpdateUser(u)
 		}
 	}
-	file.Truncate(0)
-	_, err = file.WriteString(fmt.Sprintf("%v\n", token))
-	if err != nil {
-		panic(err)
-	}
-	file.Close()
+
+	return nil
 }
