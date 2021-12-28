@@ -76,8 +76,6 @@ func work(bot sender, client tpclient, store usersstore) {
 		log.Printf("Found %d workouts", len(actualWorkouts))
 		if u.Workouts == nil {
 			log.Print("Init workouts")
-			u.Workouts = actualWorkouts
-			store.UpdateUser(u)
 
 			msg := tgbotapi.NewMessage(int64(u.ChatId), "Ok, initial workouts loaded")
 			log.Printf("Send message to user %v", u.ChatId)
@@ -92,15 +90,15 @@ func work(bot sender, client tpclient, store usersstore) {
 					msg := tgbotapi.NewMessage(int64(u.ChatId), fmt.Sprintf("Updated workout: %v at %v, description: %v\n", currentWorkout.Title, currentWorkout.WorkoutDay.Format("2006-01-02"), currentWorkout.Description))
 					log.Printf("Send message to user %v", u.ChatId)
 					bot.Send(msg)
-					u.Workouts = actualWorkouts
-					store.UpdateUser(u)
+
 				}
 			} else {
 				log.Print("No new data")
 			}
 		}
+		u.Workouts = actualWorkouts
+		store.UpdateUser(u)
 	}
-
 }
 
 func getTokenFromFile(fileName string, tokenKind string) string {
