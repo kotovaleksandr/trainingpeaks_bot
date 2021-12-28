@@ -84,6 +84,7 @@ func work(bot sender, client tpclient, store usersstore) {
 			bot.Send(msg)
 
 		} else {
+			log.Printf("User workouts %d, recived workouts %d", len(u.Workouts), len(actualWorkouts))
 			diff := CompareTwoSets(u.Workouts, actualWorkouts)
 
 			if len(diff) > 0 {
