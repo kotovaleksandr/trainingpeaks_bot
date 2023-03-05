@@ -47,7 +47,7 @@ func (c client) GetDataFromServer(token string, userId int) ([]Workout, error) {
 	client := resty.New()
 
 	req := client.R()
-	url := fmt.Sprintf("https://tpapi.trainingpeaks.com/fitness/v1/athletes/%d/workouts/%s/%s", userId, time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 7).Format("2006-01-02"))
+	url := fmt.Sprintf("https://tpapi.trainingpeaks.com/fitness/v6/athletes/%d/workouts/%s/%s", userId, time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 7).Format("2006-01-02"))
 
 	log.Printf("Get workouts from url: %s", url)
 
