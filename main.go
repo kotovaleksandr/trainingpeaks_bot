@@ -327,9 +327,12 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 		if err != nil {
 			log.Printf("DeepSeek error: %s", err)
 		} else {
-			sb.WriteString("\n🍽 *Nutrition advice for tomorrow:*\n")
-			sb.WriteString(escapeMD(advice))
-			sb.WriteString("\n")
+			// Send advice as a separate message to avoid Telegram's 4096-char limit
+			adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice for tomorrow:*\n"+escapeMD(advice))
+			adviceMsg.ParseMode = "Markdown"
+			if _, err := bot.Send(adviceMsg); err != nil {
+				log.Printf("Error sending nutrition advice: %s", err)
+			}
 		}
 	} else {
 		sb.WriteString(fmt.Sprintf("\n🗓 *Tomorrow, %s:* no workouts.\n", tomorrow.Format("January 2")))
@@ -339,6 +342,8 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 	msg.ParseMode = "Markdown"
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Error sending daily stats: %s", err)
+	} else {
+		log.Printf("Daily stats sent successfully")
 	}
 }
 
