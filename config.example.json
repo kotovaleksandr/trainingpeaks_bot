@@ -1,0 +1,10 @@
+{
+  "telegram_token": "your-telegram-bot-token",
+  "telegram_chat_id": 0,
+  "tp_token": "your-trainingpeaks-auth-cookie",
+  "tp_user_id": 0,
+  "deepseek_api_key": "your-deepseek-api-key",
+  "deepseek_model": "deepseek-chat",
+  "deepseek_base_url": "https://api.deepseek.com",
+  "deepseek_prompt": "You are a nutritionist. Based on the workouts planned for tomorrow, give a brief recommendation on calorie intake and key nutrition tips. Be concise."
+}

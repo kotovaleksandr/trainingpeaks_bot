@@ -18,3 +18,5 @@ telegram_token
 users.dat
 .vscode
 users.database
+config.json
+trainingpeaks_bot

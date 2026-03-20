@@ -1,32 +1,53 @@
 name: Docker Image CI
 
 on:
-  release:
-    types: [created]
+  push:
+    branches: [main]
   workflow_dispatch:
-env:
-  IMAGE_NAME: trainingpeaks_bot
-jobs:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: kotovaleksandr/trainingpeaks_bot
+
+jobs:
   build:
     runs-on: ubuntu-latest
-   
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-    - name: Generate build number
-      uses: einaregilsson/build-number@v3
-      with:
-         token: ${{secrets.github_token}}    
-    - name: Print new build number
-      run: echo "Build number is $BUILD_NUMBER"
-    - name: Log into GitHub Container Registry
-      run: echo ${{ secrets.GITHUB_TOKEN }} | docker login -u kotovaleksandr --password-stdin ghcr.io
-    - uses: actions/checkout@v2
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER --tag ghcr.io/kotovaleksandr/$IMAGE_NAME:latest
-    - name: Build the Docker image ARM
-      run: docker build . --file Dockerfile.arm --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER --tag ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:latest
-    - name: Push image to GitHub Container Registry
-      run: docker push ghcr.io/kotovaleksandr/$IMAGE_NAME:$BUILD_NUMBER && docker push ghcr.io/kotovaleksandr/$IMAGE_NAME:latest
-    - name: Push ARM image to GitHub Container Registry
-      run: docker push ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:$BUILD_NUMBER && docker push ghcr.io/kotovaleksandr/$IMAGE_NAME-arm:latest
-      
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
