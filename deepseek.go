@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -66,6 +67,8 @@ func (d deepseekClient) GetNutritionAdvice(workouts []Workout) (string, error) {
 		return "", err
 	}
 
+	log.Printf("DeepSeek: requesting nutrition advice for %d workout(s)", len(workouts))
+
 	req, err := http.NewRequest("POST", d.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -75,9 +78,12 @@ func (d deepseekClient) GetNutritionAdvice(workouts []Workout) (string, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		log.Printf("DeepSeek: request failed: %s", err)
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	log.Printf("DeepSeek: response status %s", resp.Status)
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("DeepSeek API error: %s", resp.Status)
@@ -90,5 +96,6 @@ func (d deepseekClient) GetNutritionAdvice(workouts []Workout) (string, error) {
 	if len(dsResp.Choices) == 0 {
 		return "", fmt.Errorf("empty response from DeepSeek")
 	}
+	log.Printf("DeepSeek: received advice (%d chars)", len(dsResp.Choices[0].Message.Content))
 	return dsResp.Choices[0].Message.Content, nil
 }

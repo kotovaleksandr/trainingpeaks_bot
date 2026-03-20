@@ -325,7 +325,7 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 			log.Printf("DeepSeek error: %s", err)
 		} else {
 			sb.WriteString("\n🍽 *Nutrition advice for tomorrow:*\n")
-			sb.WriteString(advice)
+			sb.WriteString(escapeMD(advice))
 			sb.WriteString("\n")
 		}
 	} else {
@@ -393,26 +393,34 @@ func filterDone(workouts []Workout, done bool) []Workout {
 	return result
 }
 
+func escapeMD(s string) string {
+	s = strings.ReplaceAll(s, "*", "\\*")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "`", "\\`")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	return s
+}
+
 func formatWorkoutShort(w Workout) string {
-	s := fmt.Sprintf("• *%s*", w.Title)
+	s := fmt.Sprintf("• *%s*", escapeMD(w.Title))
 	if w.Description != "" {
-		s += fmt.Sprintf(" — %s", w.Description)
+		s += fmt.Sprintf(" — %s", escapeMD(w.Description))
 	}
 	return s + "\n"
 }
 
 func formatWorkoutLine(w Workout) string {
 	if w.Description != "" {
-		return fmt.Sprintf("%s — %s", w.Title, w.Description)
+		return fmt.Sprintf("%s — %s", escapeMD(w.Title), escapeMD(w.Description))
 	}
-	return w.Title
+	return escapeMD(w.Title)
 }
 
 func formatWorkoutUpdate(w Workout) string {
 	return fmt.Sprintf("🔔 Workout updated: *%s* (%s)\n%s",
-		w.Title,
+		escapeMD(w.Title),
 		w.WorkoutDay.Format("02.01.2006"),
-		w.Description,
+		escapeMD(w.Description),
 	)
 }
 
