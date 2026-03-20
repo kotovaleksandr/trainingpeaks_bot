@@ -1,6 +1,6 @@
 module github.com/kotovaleksandr/trainingpeaks_bot
 
-go 1.7
+go 1.21
 
 require (
 	github.com/go-resty/resty/v2 v2.7.0

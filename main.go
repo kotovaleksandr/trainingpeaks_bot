@@ -129,7 +129,7 @@ func main() {
 	})
 
 	// Telegram command handler
-	go handleCommands(bot, tpClient, ai, state, tpUserID, cfg)
+	go handleCommands(bot, tpClient, ai, state, tpUserID, &cfg)
 
 	select {}
 }
@@ -212,7 +212,7 @@ func refreshToken(state *appState) {
 	}
 }
 
-func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appState, tpUserID int, cfg Config) {
+func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appState, tpUserID int, cfg *Config) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
@@ -224,12 +224,19 @@ func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appSt
 		chatID := update.Message.Chat.ID
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		// Help user discover their chat ID if not configured
+		// Auto-save chat ID on first message
 		if cfg.TelegramChatID == 0 {
-			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf(
-				"Your chat ID is: %d\nAdd it to config.json as \"telegram_chat_id\" and restart the bot.",
-				chatID,
-			)))
+			if err := SaveChatID("config.json", chatID); err != nil {
+				log.Printf("Failed to save chat ID to config: %s", err)
+				bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf(
+					"Your chat ID is: %d\nCould not save automatically — add it to config.json as \"telegram_chat_id\".",
+					chatID,
+				)))
+			} else {
+				cfg.TelegramChatID = chatID
+				log.Printf("Chat ID %d saved to config.json", chatID)
+				bot.Send(tgbotapi.NewMessage(chatID, "Chat ID saved. Bot is ready — try /today, /digest or /plan."))
+			}
 			continue
 		}
 

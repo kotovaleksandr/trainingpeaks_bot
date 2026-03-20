@@ -17,6 +17,23 @@ type Config struct {
 	DeepSeekBaseURL string `json:"deepseek_base_url"`
 }
 
+func SaveChatID(path string, chatID int64) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	raw["telegram_chat_id"] = chatID
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0644)
+}
+
 func LoadConfig(path string) Config {
 	cfg := Config{
 		DeepSeekModel:   "deepseek-chat",
