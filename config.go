@@ -17,7 +17,7 @@ type Config struct {
 	DeepSeekBaseURL string `json:"deepseek_base_url"`
 }
 
-func SaveChatID(path string, chatID int64) error {
+func saveConfigField(path string, key string, value any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -26,12 +26,20 @@ func SaveChatID(path string, chatID int64) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	raw["telegram_chat_id"] = chatID
+	raw[key] = value
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, out, 0644)
+}
+
+func SaveChatID(path string, chatID int64) error {
+	return saveConfigField(path, "telegram_chat_id", chatID)
+}
+
+func SaveTPToken(path string, token string) error {
+	return saveConfigField(path, "tp_token", token)
 }
 
 func LoadConfig(path string) Config {

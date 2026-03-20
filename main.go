@@ -209,6 +209,9 @@ func refreshToken(state *appState) {
 	if newToken != "" && newToken != state.getToken() {
 		state.setToken(newToken)
 		log.Print("Token refreshed")
+		if err := SaveTPToken("config.json", newToken); err != nil {
+			log.Printf("Failed to save refreshed token to config: %s", err)
+		}
 	}
 }
 
