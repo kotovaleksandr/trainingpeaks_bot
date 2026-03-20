@@ -328,7 +328,7 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 			log.Printf("DeepSeek error: %s", err)
 		} else {
 			// Send advice as a separate message to avoid Telegram's 4096-char limit
-			adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice for tomorrow:*\n"+escapeMD(advice))
+			adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice for tomorrow:*\n"+convertDeepSeekMD(advice))
 			adviceMsg.ParseMode = "Markdown"
 			if _, err := bot.Send(adviceMsg); err != nil {
 				log.Printf("Error sending nutrition advice: %s", err)
@@ -401,11 +401,24 @@ func filterDone(workouts []Workout, done bool) []Workout {
 	return result
 }
 
+// escapeMD escapes Telegram Markdown v1 special chars in user-provided content
+// (workout titles and descriptions from TrainingPeaks).
 func escapeMD(s string) string {
 	s = strings.ReplaceAll(s, "*", "\\*")
 	s = strings.ReplaceAll(s, "_", "\\_")
 	s = strings.ReplaceAll(s, "`", "\\`")
 	s = strings.ReplaceAll(s, "[", "\\[")
+	return s
+}
+
+// convertDeepSeekMD converts standard Markdown from DeepSeek to Telegram Markdown v1.
+func convertDeepSeekMD(s string) string {
+	// **bold** → *bold*
+	s = strings.ReplaceAll(s, "**", "*")
+	// Remove heading markers
+	s = strings.ReplaceAll(s, "### ", "")
+	s = strings.ReplaceAll(s, "## ", "")
+	s = strings.ReplaceAll(s, "# ", "")
 	return s
 }
 
