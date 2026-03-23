@@ -20,6 +20,7 @@ type tpclient interface {
 	GetTomorrowWorkouts(token string, userId int) ([]Workout, error)
 	GetRemainOnWeekWorkouts(token string, userId int) ([]Workout, error)
 	GetWeekWorkouts(token string, userId int) ([]Workout, error)
+	GetWorkoutCalories(token string, athleteID int, workoutID int64) (float64, error)
 }
 
 // appState holds mutable runtime state for the single user.
@@ -261,6 +262,16 @@ func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appSt
 				bot.Send(tgbotapi.NewMessage(chatID, "Failed to fetch workouts."))
 			} else {
 				sendWorkoutList(bot, chatID, w, "Today:")
+				if len(w) > 0 {
+					advice, err := ai.GetNutritionAdvice(nil, w)
+					if err != nil {
+						log.Printf("DeepSeek error: %s", err)
+					} else {
+						adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice:*\n"+convertDeepSeekMD(advice))
+						adviceMsg.ParseMode = "Markdown"
+						bot.Send(adviceMsg)
+					}
+				}
 			}
 		case "week":
 			w, err := c.GetRemainOnWeekWorkouts(token, tpUserID)
@@ -318,12 +329,22 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 	}
 
 	tomorrow := today.AddDate(0, 0, 1)
+	// Enrich done workouts with calories
+	for i, w := range done {
+		cal, err := c.GetWorkoutCalories(token, userID, w.WorkoutId)
+		if err != nil {
+			log.Printf("Failed to get calories for workout %d: %s", w.WorkoutId, err)
+		} else {
+			done[i].Calories = cal
+		}
+	}
+
 	if len(tomorrowWorkouts) > 0 {
 		sb.WriteString(fmt.Sprintf("\n🗓 *Tomorrow, %s:*\n", tomorrow.Format("January 2")))
 		for _, w := range tomorrowWorkouts {
 			sb.WriteString(formatWorkoutShort(w))
 		}
-		advice, err := ai.GetNutritionAdvice(tomorrowWorkouts)
+		advice, err := ai.GetNutritionAdvice(done, tomorrowWorkouts)
 		if err != nil {
 			log.Printf("DeepSeek error: %s", err)
 		} else {

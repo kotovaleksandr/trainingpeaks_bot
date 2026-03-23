@@ -9,7 +9,7 @@ import (
 )
 
 type aiAdvisor interface {
-	GetNutritionAdvice(workouts []Workout) (string, error)
+	GetNutritionAdvice(done []Workout, tomorrow []Workout) (string, error)
 }
 
 type deepseekClient struct {
@@ -35,27 +35,45 @@ type dsResponse struct {
 	} `json:"choices"`
 }
 
-func (d deepseekClient) GetNutritionAdvice(workouts []Workout) (string, error) {
+func (d deepseekClient) GetNutritionAdvice(done []Workout, tomorrow []Workout) (string, error) {
 	if d.apiKey == "" {
 		return "", fmt.Errorf("DeepSeek API key not configured")
 	}
-	if len(workouts) == 0 {
+	if len(tomorrow) == 0 {
 		return "", fmt.Errorf("no workouts provided")
 	}
 
-	var workoutText string
-	for _, w := range workouts {
-		workoutText += fmt.Sprintf("- %s", w.Title)
-		if w.Description != "" {
-			workoutText += fmt.Sprintf(": %s", w.Description)
+	var doneText string
+	for _, w := range done {
+		doneText += fmt.Sprintf("- %s", w.Title)
+		if w.TotalTime > 0 {
+			doneText += fmt.Sprintf(" (%.0f min", w.TotalTime*60)
+			if w.Calories > 0 {
+				doneText += fmt.Sprintf(", %.0f kcal", w.Calories)
+			}
+			doneText += ")"
 		}
-		if w.TotalTimePlanned > 0 {
-			workoutText += fmt.Sprintf(" (%.0f min)", w.TotalTimePlanned*60)
-		}
-		workoutText += "\n"
+		doneText += "\n"
 	}
 
-	userMessage := fmt.Sprintf("%s\n\nTomorrow's workouts:\n%s", d.prompt, workoutText)
+	var tomorrowText string
+	for _, w := range tomorrow {
+		tomorrowText += fmt.Sprintf("- %s", w.Title)
+		if w.Description != "" {
+			tomorrowText += fmt.Sprintf(": %s", w.Description)
+		}
+		if w.TotalTimePlanned > 0 {
+			tomorrowText += fmt.Sprintf(" (%.0f min)", w.TotalTimePlanned*60)
+		}
+		tomorrowText += "\n"
+	}
+
+	var userMessage string
+	if doneText != "" {
+		userMessage = fmt.Sprintf("%s\n\nToday's completed workouts:\n%s\nTomorrow's workouts:\n%s", d.prompt, doneText, tomorrowText)
+	} else {
+		userMessage = fmt.Sprintf("%s\n\nTomorrow's workouts:\n%s", d.prompt, tomorrowText)
+	}
 
 	reqBody := dsRequest{
 		Model:    d.model,
@@ -67,7 +85,7 @@ func (d deepseekClient) GetNutritionAdvice(workouts []Workout) (string, error) {
 		return "", err
 	}
 
-	log.Printf("DeepSeek: requesting nutrition advice for %d workout(s)", len(workouts))
+	log.Printf("DeepSeek: requesting nutrition advice (done: %d, tomorrow: %d)", len(done), len(tomorrow))
 
 	req, err := http.NewRequest("POST", d.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
