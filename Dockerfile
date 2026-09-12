@@ -1,4 +1,4 @@
-FROM golang:alpine as builder
+FROM golang:1.27.1-alpine AS builder
 COPY . /src
 WORKDIR /src
 ENV GOOS=linux
