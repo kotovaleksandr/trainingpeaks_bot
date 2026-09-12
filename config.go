@@ -7,14 +7,10 @@ import (
 )
 
 type Config struct {
-	TelegramToken   string `json:"telegram_token"`
-	TelegramChatID  int64  `json:"telegram_chat_id"`
-	TPToken         string `json:"tp_token"`
-	TPUserID        int    `json:"tp_user_id"`
-	DeepSeekAPIKey  string `json:"deepseek_api_key"`
-	DeepSeekPrompt  string `json:"deepseek_prompt"`
-	DeepSeekModel   string `json:"deepseek_model"`
-	DeepSeekBaseURL string `json:"deepseek_base_url"`
+	TelegramToken  string `json:"telegram_token"`
+	TelegramChatID int64  `json:"telegram_chat_id"`
+	TPToken        string `json:"tp_token"`
+	TPUserID       int    `json:"tp_user_id"`
 }
 
 func saveConfigField(path string, key string, value any) error {
@@ -43,11 +39,7 @@ func SaveTPToken(path string, token string) error {
 }
 
 func LoadConfig(path string) Config {
-	cfg := Config{
-		DeepSeekModel:   "deepseek-chat",
-		DeepSeekBaseURL: "https://api.deepseek.com",
-		DeepSeekPrompt:  "You are a nutritionist. Based on the workouts planned for tomorrow, give a brief recommendation on calorie intake and key nutrition tips. Be concise.",
-	}
+	var cfg Config
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		log.Fatalf("Config file %s not found", path)

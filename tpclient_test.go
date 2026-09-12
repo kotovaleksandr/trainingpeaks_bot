@@ -133,8 +133,8 @@ func TestDate(t *testing.T) {
 	date1 := time.Now()
 	date1 = date1.AddDate(0, 0, -7)
 	t.Log(date.String())
-	t.Logf(date.Format("2006-01-02"))
-	t.Logf(date1.Format("2006-01-02"))
+	t.Log(date.Format("2006-01-02"))
+	t.Log(date1.Format("2006-01-02"))
 }
 
 func TestInitWorkouts(t *testing.T) {
