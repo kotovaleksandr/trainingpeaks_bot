@@ -20,7 +20,6 @@ type tpclient interface {
 	GetTomorrowWorkouts(token string, userId int) ([]Workout, error)
 	GetRemainOnWeekWorkouts(token string, userId int) ([]Workout, error)
 	GetWeekWorkouts(token string, userId int) ([]Workout, error)
-	GetWorkoutCalories(token string, athleteID int, workoutID int64) (float64, error)
 }
 
 // appState holds mutable runtime state for the single user.
@@ -88,13 +87,6 @@ func main() {
 		log.Printf("telegram_chat_id is not set — send any message to the bot to discover your chat ID")
 	}
 
-	ai := deepseekClient{
-		apiKey:  cfg.DeepSeekAPIKey,
-		baseURL: cfg.DeepSeekBaseURL,
-		model:   cfg.DeepSeekModel,
-		prompt:  cfg.DeepSeekPrompt,
-	}
-
 	tpClient := client{}
 	state := &appState{token: initialToken}
 
@@ -118,7 +110,7 @@ func main() {
 	// Daily stats at 19:00 Moscow time
 	go runDailyAt(19, 0, moscowLocation(), func() {
 		if cfg.TelegramChatID != 0 {
-			sendDailyStats(bot, tpClient, ai, state.getToken(), tpUserID, cfg.TelegramChatID)
+			sendDailyStats(bot, tpClient, state.getToken(), tpUserID, cfg.TelegramChatID)
 		}
 	})
 
@@ -130,7 +122,7 @@ func main() {
 	})
 
 	// Telegram command handler
-	go handleCommands(bot, tpClient, ai, state, tpUserID, &cfg)
+	go handleCommands(bot, tpClient, state, tpUserID, &cfg)
 
 	select {}
 }
@@ -216,7 +208,7 @@ func refreshToken(state *appState) {
 	}
 }
 
-func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appState, tpUserID int, cfg *Config) {
+func handleCommands(bot *tgbotapi.BotAPI, c tpclient, state *appState, tpUserID int, cfg *Config) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
@@ -262,16 +254,6 @@ func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appSt
 				bot.Send(tgbotapi.NewMessage(chatID, "Failed to fetch workouts."))
 			} else {
 				sendWorkoutList(bot, chatID, w, "Today:")
-				if len(w) > 0 {
-					advice, err := ai.GetNutritionAdvice(nil, w)
-					if err != nil {
-						log.Printf("DeepSeek error: %s", err)
-					} else {
-						adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice:*\n"+convertDeepSeekMD(advice))
-						adviceMsg.ParseMode = "Markdown"
-						bot.Send(adviceMsg)
-					}
-				}
 			}
 		case "week":
 			w, err := c.GetRemainOnWeekWorkouts(token, tpUserID)
@@ -282,14 +264,14 @@ func handleCommands(bot *tgbotapi.BotAPI, c tpclient, ai aiAdvisor, state *appSt
 				sendWorkoutList(bot, chatID, w, "Remaining this week:")
 			}
 		case "digest":
-			sendDailyStats(bot, c, ai, token, tpUserID, chatID)
+			sendDailyStats(bot, c, token, tpUserID, chatID)
 		case "plan":
 			sendWeeklyPlan(bot, c, token, tpUserID, chatID)
 		}
 	}
 }
 
-func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID int, chatID int64) {
+func sendDailyStats(bot sender, c tpclient, token string, userID int, chatID int64) {
 	moscow := moscowLocation()
 	today := time.Now().In(moscow)
 
@@ -329,31 +311,10 @@ func sendDailyStats(bot sender, c tpclient, ai aiAdvisor, token string, userID i
 	}
 
 	tomorrow := today.AddDate(0, 0, 1)
-	// Enrich done workouts with calories
-	for i, w := range done {
-		cal, err := c.GetWorkoutCalories(token, userID, w.WorkoutId)
-		if err != nil {
-			log.Printf("Failed to get calories for workout %d: %s", w.WorkoutId, err)
-		} else {
-			done[i].Calories = cal
-		}
-	}
-
 	if len(tomorrowWorkouts) > 0 {
 		sb.WriteString(fmt.Sprintf("\n🗓 *Tomorrow, %s:*\n", tomorrow.Format("January 2")))
 		for _, w := range tomorrowWorkouts {
 			sb.WriteString(formatWorkoutShort(w))
-		}
-		advice, err := ai.GetNutritionAdvice(done, tomorrowWorkouts)
-		if err != nil {
-			log.Printf("DeepSeek error: %s", err)
-		} else {
-			// Send advice as a separate message to avoid Telegram's 4096-char limit
-			adviceMsg := tgbotapi.NewMessage(chatID, "🍽 *Nutrition advice for tomorrow:*\n"+convertDeepSeekMD(advice))
-			adviceMsg.ParseMode = "Markdown"
-			if _, err := bot.Send(adviceMsg); err != nil {
-				log.Printf("Error sending nutrition advice: %s", err)
-			}
 		}
 	} else {
 		sb.WriteString(fmt.Sprintf("\n🗓 *Tomorrow, %s:* no workouts.\n", tomorrow.Format("January 2")))
@@ -429,17 +390,6 @@ func escapeMD(s string) string {
 	s = strings.ReplaceAll(s, "_", "\\_")
 	s = strings.ReplaceAll(s, "`", "\\`")
 	s = strings.ReplaceAll(s, "[", "\\[")
-	return s
-}
-
-// convertDeepSeekMD converts standard Markdown from DeepSeek to Telegram Markdown v1.
-func convertDeepSeekMD(s string) string {
-	// **bold** → *bold*
-	s = strings.ReplaceAll(s, "**", "*")
-	// Remove heading markers
-	s = strings.ReplaceAll(s, "### ", "")
-	s = strings.ReplaceAll(s, "## ", "")
-	s = strings.ReplaceAll(s, "# ", "")
 	return s
 }
 
