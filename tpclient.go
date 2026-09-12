@@ -18,6 +18,7 @@ type Workout struct {
 	WorkoutId        int64
 	TotalTime        float64
 	TotalTimePlanned float64
+	Calories         float64
 }
 
 type CustomDate struct {
@@ -194,6 +195,38 @@ func (c client) GetWeekWorkouts(token string, userId int) ([]Workout, error) {
 		}
 	}
 	return filtered, nil
+}
+
+// GetWorkoutCalories fetches calorie data for a single completed workout.
+func (c client) GetWorkoutCalories(token string, athleteID int, workoutID int64) (float64, error) {
+	type workoutDetail struct {
+		Calories float64 `json:"calories"`
+	}
+
+	httpClient := resty.New()
+	url := fmt.Sprintf(
+		"https://tpapi.trainingpeaks.com/fitness/v6/athletes/%d/workouts/%d",
+		athleteID, workoutID,
+	)
+	log.Printf("Get workout details from url: %s", url)
+
+	resp, err := httpClient.R().
+		SetCookies(getCookies(token)).
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0").
+		Get(url)
+
+	if err != nil {
+		return 0, fmt.Errorf("workout details request failed: %w", err)
+	}
+	if resp.StatusCode() != 200 {
+		return 0, fmt.Errorf("workout details returned %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	var detail workoutDetail
+	if err := json.Unmarshal(resp.Body(), &detail); err != nil {
+		return 0, fmt.Errorf("failed to parse workout details: %w", err)
+	}
+	return detail.Calories, nil
 }
 
 // CompareTwoSets returns workouts that are new or changed (by WorkoutId).
